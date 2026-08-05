@@ -1,0 +1,31 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:sgdj_test;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+  mail:
+    host: localhost
+    port: 3025
+    username: test
+    password: test
+
+jwt:
+  secret: TestSecretKeyOnlyForUnitTestsMustBeAtLeast256BitsLong!!
+  expiration: 3600000
+
+app:
+  frontend-url: http://localhost:5173
+  cors:
+    allowed-origins: http://localhost:5173
+  mail:
+    from: no-reply@sgdj.pmp.ma
+  security:
+    max-failed-attempts: 5
+    reset-token-validity-minutes: 10
+  upload:
+    photos-dir: target/test-uploads/photos

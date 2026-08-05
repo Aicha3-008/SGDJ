@@ -1,0 +1,53 @@
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/sgdj_db?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      # La base sgdj_db existe deja avec son propre schema SQL (voir sql/manual_migration.sql).
+      # ddl-auto=validate : Hibernate verifie au demarrage que les entites correspondent au schema
+      # reel mais ne cree/n'altere JAMAIS les tables automatiquement.
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+  mail:
+    host: ${MAIL_HOST:smtp.gmail.com}
+    port: ${MAIL_PORT:587}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 2MB
+
+server:
+  port: 8080
+
+jwt:
+  secret: ${JWT_SECRET:ChangezCetteCleSecreteEnProductionAvecAuMoins256Bits!!}
+  expiration: ${JWT_EXPIRATION:3600000}   # 1h en millisecondes
+
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  mail:
+    from: ${MAIL_FROM:no-reply@sgdj.pmp.ma}
+  security:
+    max-failed-attempts: 5
+    reset-token-validity-minutes: 10
+  upload:
+    photos-dir: uploads/photos

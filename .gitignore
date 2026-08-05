@@ -1,5 +1,10 @@
 HELP.md
 target/
+uploads/
+
+### Frontend (React/Vite) ###
+frontend/node_modules/
+frontend/dist/
 .mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/
 !**/src/test/**/target/
@@ -31,3 +36,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Claude Code (config local, pas necessaire pour le projet) ###
+.claude/
