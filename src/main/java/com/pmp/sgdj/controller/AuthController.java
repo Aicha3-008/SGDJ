@@ -5,6 +5,7 @@ import com.pmp.sgdj.dto.ForgotPasswordRequest;
 import com.pmp.sgdj.dto.LoginRequest;
 import com.pmp.sgdj.dto.MessageResponse;
 import com.pmp.sgdj.dto.ResetPasswordRequest;
+import com.pmp.sgdj.dto.UnlockAccountRequest;
 import com.pmp.sgdj.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -44,5 +45,11 @@ public class AuthController {
     public ResponseEntity<MessageResponse> resetPassword(@Valid @RequestBody ResetPasswordRequest request) {
         authService.resetPassword(request);
         return ResponseEntity.ok(new MessageResponse("Mot de passe reinitialise avec succes"));
+    }
+
+    @PostMapping("/unlock-account")
+    public ResponseEntity<MessageResponse> unlockAccount(@Valid @RequestBody UnlockAccountRequest request) {
+        authService.unlockAccount(request);
+        return ResponseEntity.ok(new MessageResponse("Compte reactive avec succes, vous pouvez vous reconnecter."));
     }
 }

@@ -4,6 +4,7 @@ import Layout from "./components/Layout.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage.jsx";
 import ResetPasswordPage from "./pages/ResetPasswordPage.jsx";
+import UnlockAccountPage from "./pages/UnlockAccountPage.jsx";
 import DashboardPage from "./pages/DashboardPage.jsx";
 import UsersListPage from "./pages/UsersListPage.jsx";
 import UserFormPage from "./pages/UserFormPage.jsx";
@@ -16,6 +17,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
+      <Route path="/unlock-account" element={<UnlockAccountPage />} />
 
       <Route element={<ProtectedRoute />}>
         <Route element={<Layout />}>

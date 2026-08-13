@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
 import { extractErrorMessage } from "../api/axiosClient";
@@ -13,9 +13,24 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Verrouillage temporaire (brute-force) : nombre de secondes restantes avant de pouvoir
+  // retenter, ou verrouillage complet (compte desactive, email de reactivation envoye).
+  const [lockedSeconds, setLockedSeconds] = useState(0);
+  const [accountEmailLocked, setAccountEmailLocked] = useState(false);
+
+  useEffect(() => {
+    if (lockedSeconds <= 0) return;
+    const interval = setInterval(() => {
+      setLockedSeconds((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [lockedSeconds]);
+
   if (isAuthenticated) {
     return <Navigate to={location.state?.from?.pathname || "/dashboard"} replace />;
   }
+
+  const isLocked = lockedSeconds > 0 || accountEmailLocked;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -26,6 +41,15 @@ export default function LoginPage() {
       navigate(location.state?.from?.pathname || "/dashboard", { replace: true });
     } catch (err) {
       setError(extractErrorMessage(err));
+
+      const status = err.response?.status;
+      const retryAfterSeconds = err.response?.data?.retryAfterSeconds;
+      if (status === 423 && typeof retryAfterSeconds === "number") {
+        setLockedSeconds(retryAfterSeconds);
+        setAccountEmailLocked(false);
+      } else if (status === 423) {
+        setAccountEmailLocked(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -47,6 +71,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="username"
+              disabled={isLocked}
               required
             />
           </div>
@@ -60,13 +85,20 @@ export default function LoginPage() {
               value={motDePasse}
               onChange={(e) => setMotDePasse(e.target.value)}
               autoComplete="current-password"
+              disabled={isLocked}
               required
             />
           </div>
 
           {error && <div className="form-error" role="alert">{error}</div>}
 
-          <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
+          {lockedSeconds > 0 && (
+            <p className="form-help">
+              Nouvelle tentative possible dans {lockedSeconds} seconde{lockedSeconds > 1 ? "s" : ""}...
+            </p>
+          )}
+
+          <button type="submit" className="btn btn-primary btn-block" disabled={loading || isLocked}>
             {loading ? "Connexion..." : "Se connecter"}
           </button>
         </form>

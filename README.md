@@ -57,7 +57,12 @@ utils/          Politique de mot de passe, debounce
 - Déconnexion (suppression du jeton côté client — API stateless)
 - Changement de mot de passe (utilisateur connecté)
 - Mot de passe oublié → email réel (JavaMailSender/SMTP) avec lien de réinitialisation (jeton à usage unique, expiration 10 min)
-- Verrouillage automatique du compte après 5 échecs de connexion, déverrouillage manuel par l'admin
+- **Protection brute-force progressive** (3 tentatives) :
+  - Échec n°1 → attente de 1 minute avant nouvelle tentative
+  - Échec n°2 → attente de 5 minutes
+  - Échec n°3 → compte verrouillé + email de réactivation envoyé automatiquement (lien à usage unique, valable 1h) ; le compte reste verrouillé tant que l'utilisateur n'a pas cliqué sur ce lien (page `/unlock-account`)
+  - Toute tentative pendant une fenêtre d'attente est bloquée (même avec le bon mot de passe) sans incrémenter le compteur
+  - L'admin peut aussi déverrouiller manuellement un compte (`PATCH /api/utilisateurs/{id}/deverrouiller`)
 - Messages d'erreur génériques (pas d'énumération des comptes existants)
 
 ### Gestion des utilisateurs (ADMIN uniquement)
@@ -112,7 +117,7 @@ La base `sgdj_db` existe déjà avec ses tables. Exécuter **une seule fois** la
 mysql -u root -p sgdj_db < sql/manual_migration.sql
 ```
 
-Colonnes ajoutées sur `utilisateurs` : `reset_token`, `reset_token_expiration`, `photo`.
+Colonnes ajoutées sur `utilisateurs` : `reset_token`, `reset_token_expiration`, `photo`, `locked_until`, `unlock_token`, `unlock_token_expiration`.
 
 ### 2. Backend
 
@@ -163,6 +168,7 @@ Frontend sur **http://localhost:5173**, configuré pour appeler l'API sur `http:
 | POST | `/api/auth/logout` | Authentifié |
 | POST | `/api/auth/forgot-password` | Public |
 | POST | `/api/auth/reset-password` | Public |
+| POST | `/api/auth/unlock-account` | Public |
 | GET/PUT | `/api/profile` | Authentifié |
 | PUT | `/api/profile/password` | Authentifié |
 | POST | `/api/profile/photo` | Authentifié |

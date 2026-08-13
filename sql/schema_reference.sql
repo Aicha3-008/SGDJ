@@ -59,3 +59,6 @@ CREATE TABLE documents (
 ALTER TABLE utilisateurs ADD COLUMN reset_token             VARCHAR(255) NULL;
 ALTER TABLE utilisateurs ADD COLUMN reset_token_expiration  DATETIME     NULL;
 ALTER TABLE utilisateurs ADD COLUMN photo                   VARCHAR(500) NULL;
+ALTER TABLE utilisateurs ADD COLUMN locked_until            DATETIME     NULL;
+ALTER TABLE utilisateurs ADD COLUMN unlock_token            VARCHAR(255) NULL;
+ALTER TABLE utilisateurs ADD COLUMN unlock_token_expiration DATETIME     NULL;

@@ -1,6 +1,10 @@
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/sgdj_db?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC
+    # Pas de serverTimezone force : MySQL et la JVM utilisent tous deux l'heure locale du systeme
+    # (confirme via @@session.time_zone = SYSTEM). Forcer serverTimezone=UTC ici causait un
+    # decalage d'1h entre LocalDateTime.now() cote Java et les valeurs relues depuis MySQL,
+    # ce qui cassait les comparaisons d'expiration (verrouillage brute-force, tokens).
+    url: jdbc:mysql://localhost:3306/sgdj_db?useUnicode=true&characterEncoding=utf8
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD:}
   jpa:
@@ -45,9 +49,15 @@ app:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173}
   mail:
-    from: ${MAIL_FROM:no-reply@sgdj.pmp.ma}
+    from: ${MAIL_FROM:noreply.sgdj@gmail.com}
   security:
-    max-failed-attempts: 5
+    # Protection brute-force progressive : 3 tentatives avant verrouillage complet.
+    # Echec 1 -> attente de lockout-step1-minutes, echec 2 -> lockout-step2-minutes,
+    # echec 3 -> compte verrouille + email de reactivation.
+    max-failed-attempts: 3
+    lockout-step1-minutes: 1
+    lockout-step2-minutes: 5
     reset-token-validity-minutes: 10
+    unlock-token-validity-minutes: 60
   upload:
     photos-dir: uploads/photos

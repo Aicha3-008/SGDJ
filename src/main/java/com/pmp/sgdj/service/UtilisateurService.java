@@ -116,6 +116,9 @@ public class UtilisateurService {
         Utilisateur utilisateur = findEntity(id);
         utilisateur.setCompteVerrouille(false);
         utilisateur.setTentativesEchouees(0);
+        utilisateur.setLockedUntil(null);
+        utilisateur.setUnlockToken(null);
+        utilisateur.setUnlockTokenExpiration(null);
         return utilisateurMapper.toResponseDTO(utilisateurRepository.save(utilisateur));
     }
 

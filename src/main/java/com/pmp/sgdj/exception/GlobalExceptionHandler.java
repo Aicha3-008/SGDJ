@@ -44,7 +44,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(AccountLockedException.class)
     public ResponseEntity<ApiErrorResponse> handleAccountLocked(AccountLockedException ex, HttpServletRequest request) {
-        return build(HttpStatus.LOCKED, ex.getMessage(), request);
+        ApiErrorResponse body = new ApiErrorResponse(HttpStatus.LOCKED.value(), HttpStatus.LOCKED.getReasonPhrase(),
+                ex.getMessage(), request.getRequestURI(), ex.getRetryAfterSeconds());
+        return ResponseEntity.status(HttpStatus.LOCKED).body(body);
     }
 
     @ExceptionHandler({BadCredentialsCustomException.class, BadCredentialsException.class, AuthenticationException.class})

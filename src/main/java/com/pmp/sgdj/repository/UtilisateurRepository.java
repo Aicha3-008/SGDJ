@@ -16,6 +16,8 @@ public interface UtilisateurRepository extends JpaRepository<Utilisateur, Long>,
 
     Optional<Utilisateur> findByResetToken(String resetToken);
 
+    Optional<Utilisateur> findByUnlockToken(String unlockToken);
+
     boolean existsByUsername(String username);
 
     boolean existsByEmail(String email);

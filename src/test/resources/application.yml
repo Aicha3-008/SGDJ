@@ -25,7 +25,10 @@ app:
   mail:
     from: no-reply@sgdj.pmp.ma
   security:
-    max-failed-attempts: 5
+    max-failed-attempts: 3
+    lockout-step1-minutes: 1
+    lockout-step2-minutes: 5
     reset-token-validity-minutes: 10
+    unlock-token-validity-minutes: 60
   upload:
     photos-dir: target/test-uploads/photos

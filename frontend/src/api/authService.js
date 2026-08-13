@@ -18,6 +18,10 @@ export function resetPassword(token, nouveauMotDePasse, confirmationMotDePasse) 
     .then((res) => res.data);
 }
 
+export function unlockAccount(token) {
+  return axiosClient.post("/auth/unlock-account", { token }).then((res) => res.data);
+}
+
 export function changePassword(ancienMotDePasse, nouveauMotDePasse, confirmationMotDePasse) {
   return axiosClient
     .put("/profile/password", { ancienMotDePasse, nouveauMotDePasse, confirmationMotDePasse })

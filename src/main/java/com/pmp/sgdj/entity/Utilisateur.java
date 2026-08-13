@@ -57,4 +57,15 @@ public class Utilisateur {
 
     /** Chemin relatif (sous app.upload.photos-dir) vers la photo de profil, null si aucune. */
     private String photo;
+
+    /** Verrouillage temporaire progressif (protection brute-force) : login refuse tant que non ecoule. */
+    @Column(name = "locked_until")
+    private LocalDateTime lockedUntil;
+
+    /** Jeton permettant a l'utilisateur de reactiver lui-meme son compte apres verrouillage complet. */
+    @Column(name = "unlock_token")
+    private String unlockToken;
+
+    @Column(name = "unlock_token_expiration")
+    private LocalDateTime unlockTokenExpiration;
 }

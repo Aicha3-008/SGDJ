@@ -16,6 +16,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -33,26 +34,56 @@ public class AuthService {
     @Value("${app.security.max-failed-attempts}")
     private int maxFailedAttempts;
 
+    @Value("${app.security.lockout-step1-minutes}")
+    private long lockoutStep1Minutes;
+
+    @Value("${app.security.lockout-step2-minutes}")
+    private long lockoutStep2Minutes;
+
     @Value("${app.security.reset-token-validity-minutes}")
     private long resetTokenValidityMinutes;
 
+    @Value("${app.security.unlock-token-validity-minutes}")
+    private long unlockTokenValidityMinutes;
+
     // noRollbackFor est indispensable : sans cela, Spring annule (rollback) la mise a jour
-    // du compteur d'echecs faite dans registerFailedAttempt() des qu'on leve
-    // BadCredentialsCustomException juste apres -> la protection anti brute-force serait
-    // silencieusement inoperante (le compteur ne serait jamais persiste en base).
-    @Transactional(noRollbackFor = BadCredentialsCustomException.class)
+    // du compteur d'echecs faite dans registerFailedAttempt() des qu'on leve une exception
+    // juste apres -> la protection anti brute-force serait silencieusement inoperante
+    // (le compteur/verrouillage ne serait jamais persiste en base).
+    @Transactional(noRollbackFor = {BadCredentialsCustomException.class, AccountLockedException.class})
     public AuthResponse login(LoginRequest request) {
         Utilisateur utilisateur = utilisateurRepository.findByEmail(request.email())
                 .orElseThrow(() -> new BadCredentialsCustomException("Identifiants invalides"));
 
         if (utilisateur.isCompteVerrouille()) {
             throw new AccountLockedException(
-                    "Compte verrouille suite a plusieurs echecs de connexion. Contactez un administrateur.");
+                    "Compte verrouille suite a plusieurs echecs de connexion. "
+                            + "Un email de reactivation vous a ete envoye : cliquez sur le lien qu'il contient "
+                            + "pour reactiver votre compte.");
+        }
+
+        if (utilisateur.getLockedUntil() != null && utilisateur.getLockedUntil().isAfter(LocalDateTime.now())) {
+            long seconds = secondsUntil(utilisateur.getLockedUntil());
+            throw new AccountLockedException(
+                    "Trop de tentatives de connexion. Veuillez patienter encore "
+                            + formatWait(seconds) + " avant de reessayer.",
+                    seconds);
         }
 
         if (!passwordEncoder.matches(request.motDePasse(), utilisateur.getMotDePasse())) {
             registerFailedAttempt(utilisateur);
-            throw new BadCredentialsCustomException("Identifiants invalides");
+            // registerFailedAttempt vient de fixer lockedUntil (echec 1 ou 2) ou compteVerrouille
+            // (echec 3) : on renvoie immediatement le message correspondant plutot qu'un message
+            // generique, pour informer l'utilisateur du temps d'attente ou de l'envoi de l'email.
+            if (utilisateur.isCompteVerrouille()) {
+                throw new AccountLockedException(
+                        "Trop de tentatives echouees : votre compte vient d'etre verrouille. "
+                                + "Un email de reactivation vous a ete envoye.");
+            }
+            long seconds = secondsUntil(utilisateur.getLockedUntil());
+            throw new AccountLockedException(
+                    "Identifiants invalides. Nouvelle tentative possible dans " + formatWait(seconds) + ".",
+                    seconds);
         }
 
         if (!utilisateur.isActif()) {
@@ -60,6 +91,7 @@ public class AuthService {
         }
 
         utilisateur.setTentativesEchouees(0);
+        utilisateur.setLockedUntil(null);
         utilisateur.setDerniereConnexion(LocalDateTime.now());
         utilisateurRepository.save(utilisateur);
 
@@ -70,13 +102,39 @@ public class AuthService {
                 utilisateurMapper.toResponseDTO(utilisateur));
     }
 
+    /** Verrouillage progressif : echec 1 -> attente courte, echec 2 -> attente longue, echec 3 -> verrouillage + email. */
     private void registerFailedAttempt(Utilisateur utilisateur) {
         int tentatives = utilisateur.getTentativesEchouees() + 1;
         utilisateur.setTentativesEchouees(tentatives);
+
         if (tentatives >= maxFailedAttempts) {
             utilisateur.setCompteVerrouille(true);
+            utilisateur.setLockedUntil(null);
+
+            String token = UUID.randomUUID().toString();
+            utilisateur.setUnlockToken(token);
+            utilisateur.setUnlockTokenExpiration(LocalDateTime.now().plusMinutes(unlockTokenValidityMinutes));
+            utilisateurRepository.save(utilisateur);
+
+            emailService.sendAccountLockedEmail(utilisateur.getEmail(), token);
+            return;
         }
+
+        long minutes = tentatives == 1 ? lockoutStep1Minutes : lockoutStep2Minutes;
+        utilisateur.setLockedUntil(LocalDateTime.now().plusMinutes(minutes));
         utilisateurRepository.save(utilisateur);
+    }
+
+    private long secondsUntil(LocalDateTime until) {
+        return Math.max(0, Duration.between(LocalDateTime.now(), until).getSeconds());
+    }
+
+    private String formatWait(long seconds) {
+        if (seconds < 60) {
+            return seconds + " seconde(s)";
+        }
+        long minutes = (seconds + 59) / 60;
+        return minutes + " minute(s)";
     }
 
     @Transactional
@@ -127,8 +185,29 @@ public class AuthService {
         utilisateur.setMotDePasse(passwordEncoder.encode(request.nouveauMotDePasse()));
         utilisateur.setResetToken(null);
         utilisateur.setResetTokenExpiration(null);
+        clearLockoutState(utilisateur);
+        utilisateurRepository.save(utilisateur);
+    }
+
+    @Transactional
+    public void unlockAccount(UnlockAccountRequest request) {
+        Utilisateur utilisateur = utilisateurRepository.findByUnlockToken(request.token())
+                .orElseThrow(() -> new InvalidTokenException("Jeton de reactivation invalide"));
+
+        if (utilisateur.getUnlockTokenExpiration() == null
+                || utilisateur.getUnlockTokenExpiration().isBefore(LocalDateTime.now())) {
+            throw new InvalidTokenException("Jeton de reactivation expire. Contactez un administrateur.");
+        }
+
+        clearLockoutState(utilisateur);
+        utilisateurRepository.save(utilisateur);
+    }
+
+    private void clearLockoutState(Utilisateur utilisateur) {
         utilisateur.setTentativesEchouees(0);
         utilisateur.setCompteVerrouille(false);
-        utilisateurRepository.save(utilisateur);
+        utilisateur.setLockedUntil(null);
+        utilisateur.setUnlockToken(null);
+        utilisateur.setUnlockTokenExpiration(null);
     }
 }
