@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useAuth } from "../auth/useAuth";
 import { useNotification } from "../notifications/NotificationContext";
 import { toAbsoluteFileUrl } from "../api/config";
+import { IconDashboard, IconUsers, IconProfile, IconMenu, IconLogout } from "./Icons";
 
 export default function Layout() {
   const { user, isAdmin, logout } = useAuth();
@@ -20,38 +21,43 @@ export default function Layout() {
 
   return (
     <div className="app-shell">
+      <div className={`sidebar-backdrop ${sidebarOpen ? "visible" : ""}`} onClick={() => setSidebarOpen(false)} />
+
       <aside className={`sidebar ${sidebarOpen ? "open" : ""}`}>
         <div className="sidebar-brand">
           SGDJ
           <small>Presidence du Ministere Public</small>
         </div>
         <NavLink to="/dashboard" className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
-          Tableau de bord
+          <IconDashboard /> Tableau de bord
         </NavLink>
         {isAdmin && (
           <NavLink to="/utilisateurs" className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
-            Utilisateurs
+            <IconUsers /> Utilisateurs
           </NavLink>
         )}
         <NavLink to="/profile" className={({ isActive }) => `sidebar-link ${isActive ? "active" : ""}`} onClick={() => setSidebarOpen(false)}>
-          Mon profil
+          <IconProfile /> Mon profil
         </NavLink>
+
+        <div className="sidebar-footer">
+          <button className="sidebar-link sidebar-logout" onClick={handleLogout}>
+            <IconLogout /> Deconnexion
+          </button>
+        </div>
       </aside>
 
       <div className="main-area">
         <header className="navbar">
-          <button className="btn btn-secondary btn-sm navbar-menu-btn" onClick={() => setSidebarOpen((v) => !v)}>
-            Menu
+          <button className="navbar-menu-btn" onClick={() => setSidebarOpen((v) => !v)} aria-label="Ouvrir le menu">
+            <IconMenu />
           </button>
           <div />
           <div className="navbar-user">
-            <span>{user?.nom} {user?.prenom}</span>
+            <span className="navbar-username">{user?.nom} {user?.prenom}</span>
             <div className="navbar-avatar">
               {user?.photoUrl ? <img src={toAbsoluteFileUrl(user.photoUrl)} alt="" /> : initials}
             </div>
-            <button className="btn btn-secondary btn-sm" onClick={handleLogout}>
-              Deconnexion
-            </button>
           </div>
         </header>
 

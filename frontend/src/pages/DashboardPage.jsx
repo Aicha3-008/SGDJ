@@ -5,6 +5,44 @@ import LoadingSpinner from "../components/LoadingSpinner";
 import { extractErrorMessage } from "../api/axiosClient";
 import { useNotification } from "../notifications/NotificationContext";
 import { useAuth } from "../auth/useAuth";
+import { formatDateShort } from "../utils/formatDate";
+import { IconUsers, IconFolder, IconArchive, IconClock } from "../components/Icons";
+
+const STATUT_BADGE = {
+  EN_COURS: "badge-info",
+  CLOTURE: "badge-success",
+  ARCHIVE: "badge-warning",
+};
+
+const STATUT_LABEL = {
+  EN_COURS: "En cours",
+  CLOTURE: "Cloture",
+  ARCHIVE: "Archive",
+};
+
+function DossierList({ items, emptyLabel, dateField }) {
+  if (items.length === 0) {
+    return <p className="empty-state">{emptyLabel}</p>;
+  }
+  return (
+    <div className="dossier-list">
+      {items.map((d) => (
+        <div className="dossier-list-item" key={d.id}>
+          <div className="dossier-list-main">
+            <div className="dossier-list-title">{d.numeroDossier} — {d.objet}</div>
+            <div className="dossier-list-meta">{d.creePar ? `Cree par ${d.creePar}` : null}</div>
+          </div>
+          <div className="dossier-list-side">
+            <span className={`badge ${STATUT_BADGE[d.statut] ?? "badge-info"}`}>
+              {STATUT_LABEL[d.statut] ?? d.statut}
+            </span>
+            <span className="dossier-list-date">{formatDateShort(d[dateField])}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function DashboardPage() {
   const { isAdmin } = useAuth();
@@ -38,17 +76,39 @@ export default function DashboardPage() {
       </div>
 
       <div className="stat-grid">
+        {isAdmin && (
+          <div className="stat-card">
+            <div className="stat-icon"><IconUsers /></div>
+            <div>
+              <div className="stat-value">{stats.totalUtilisateurs}</div>
+              <div className="stat-label">Utilisateurs</div>
+            </div>
+          </div>
+        )}
         <div className="stat-card">
-          <div className="stat-value">{stats.totalUtilisateurs}</div>
-          <div className="stat-label">Utilisateurs</div>
+          <div className="stat-icon"><IconFolder /></div>
+          <div>
+            <div className="stat-value">{stats.totalDossiers}</div>
+            <div className="stat-label">{isAdmin ? "Dossiers judiciaires" : "Mes dossiers"}</div>
+          </div>
         </div>
         <div className="stat-card">
-          <div className="stat-value">{stats.totalDossiers}</div>
-          <div className="stat-label">Dossiers judiciaires</div>
+          <div className="stat-icon stat-icon-warning"><IconArchive /></div>
+          <div>
+            <div className="stat-value">{stats.totalDossiersArchives}</div>
+            <div className="stat-label">{isAdmin ? "Dossiers archives" : "Mes dossiers archives"}</div>
+          </div>
         </div>
-        <div className="stat-card">
-          <div className="stat-value">{stats.totalDossiersArchives}</div>
-          <div className="stat-label">Dossiers archives</div>
+      </div>
+
+      <div className="dashboard-columns">
+        <div className="card">
+          <h3><IconFolder /> Dossiers recents</h3>
+          <DossierList items={stats.dossiersRecents} dateField="dateCreation" emptyLabel="Aucun dossier pour le moment" />
+        </div>
+        <div className="card">
+          <h3><IconClock /> Dernieres modifications</h3>
+          <DossierList items={stats.dernieresModifications} dateField="dateMaj" emptyLabel="Aucune modification recente" />
         </div>
       </div>
 
