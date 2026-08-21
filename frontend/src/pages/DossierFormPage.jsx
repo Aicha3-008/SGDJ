@@ -7,6 +7,8 @@ import {
     updateDossier,
 } from "../api/dossierService";
 
+import { uploadDocument } from "../api/documentService";
+
 import { extractErrorMessage } from "../api/axiosClient";
 import { useNotification } from "../notifications/NotificationContext";
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -36,6 +38,10 @@ export default function DossierFormPage() {
     const [loading, setLoading] = useState(isEdit);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState("");
+
+    // Pièce jointe sélectionnée
+    const [selectedFile, setSelectedFile] = useState(null);
+
 
     // ======================================================
     // VERIFICATION DES DROITS
@@ -221,6 +227,7 @@ export default function DossierFormPage() {
                  * Le backend impose EN_COURS
                  * à la création.
                  */
+
                 const createPayload = {
 
                     numeroDossier:
@@ -246,13 +253,29 @@ export default function DossierFormPage() {
                 };
 
 
-                await createDossier(
-                    createPayload
-                );
+                // Création du dossier
+                const createdDossier =
+                    await createDossier(
+                        createPayload
+                    );
+
+
+                // Ajouter la pièce jointe
+                // seulement si un fichier a été sélectionné
+                if (selectedFile) {
+
+                    await uploadDocument(
+                        createdDossier.id,
+                        selectedFile
+                    );
+
+                }
 
 
                 notification.success(
-                    "Dossier cree avec succes"
+                    selectedFile
+                        ? "Dossier et pièce jointe créés avec succès"
+                        : "Dossier cree avec succes"
                 );
             }
 
@@ -547,6 +570,96 @@ export default function DossierFormPage() {
                         />
 
                     </div>
+
+
+                    {/* ==================================================
+                        PIECE JOINTE
+                    ================================================== */}
+
+                    {!isEdit && (
+
+                        <div className="form-group">
+
+                            <label
+                                className="form-label"
+                                htmlFor="pieceJointe"
+                            >
+                                Pièce jointe
+                            </label>
+
+
+                            <input
+                                id="pieceJointe"
+                                className="form-input"
+                                type="file"
+                                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+
+                                onChange={(event) => {
+
+                                    const file =
+                                        event.target.files?.[0] || null;
+
+                                    if (!file) {
+
+                                        setSelectedFile(null);
+
+                                        return;
+                                    }
+
+
+                                    // Taille maximale : 10 Mo
+                                    if (
+                                        file.size >
+                                        10 * 1024 * 1024
+                                    ) {
+
+                                        setError(
+                                            "La taille du fichier ne doit pas dépasser 10 Mo."
+                                        );
+
+                                        event.target.value = "";
+
+                                        setSelectedFile(null);
+
+                                        return;
+                                    }
+
+
+                                    setError("");
+
+                                    setSelectedFile(file);
+
+                                }}
+                            />
+
+
+                            <small>
+                                Formats acceptés : PDF, JPG, JPEG,
+                                PNG, DOC et DOCX.
+                                Taille maximale : 10 Mo.
+                            </small>
+
+
+                            {selectedFile && (
+
+                                <div
+                                    style={{
+                                        marginTop: 8,
+                                    }}
+                                >
+                                    Fichier sélectionné :{" "}
+
+                                    <strong>
+                                        {selectedFile.name}
+                                    </strong>
+
+                                </div>
+
+                            )}
+
+                        </div>
+
+                    )}
 
 
                     {/* ==================================================

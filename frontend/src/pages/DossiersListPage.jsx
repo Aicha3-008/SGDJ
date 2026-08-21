@@ -391,7 +391,7 @@ export default function DossiersListPage() {
                                                 {isAdmin && (
 
                                                     <Link
-                                                        to={`/dossiers/${dossier.id}/edit`}
+                                                        to={`/dossiers/${dossier.id}/modifier`}
                                                         className="btn btn-secondary btn-sm"
                                                     >
                                                         Modifier

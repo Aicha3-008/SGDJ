@@ -1,25 +1,26 @@
 import { useEffect, useState } from "react";
-
-import {
-    Link,
-    useNavigate,
-    useParams,
-} from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import {
     getDossier,
     deleteDossier,
     archiveDossier,
-
+    downloadDossierPdf,
 } from "../api/dossierService";
+
+import {
+    listDocumentsByDossier,
+    uploadDocument,
+    downloadDocument,
+    deleteDocument,
+} from "../api/documentService";
 
 import { extractErrorMessage } from "../api/axiosClient";
 import { useNotification } from "../notifications/NotificationContext";
-import LoadingSpinner from "../components/LoadingSpinner";
-import ConfirmDialog from "../components/ConfirmDialog";
-import DocumentsPanel from "../components/DocumentsPanel";
 import { useAuth } from "../auth/useAuth";
 
+import LoadingSpinner from "../components/LoadingSpinner";
+import ConfirmDialog from "../components/ConfirmDialog";
 
 const STATUT_LABELS = {
     EN_COURS: "En cours",
@@ -27,126 +28,397 @@ const STATUT_LABELS = {
     ARCHIVE: "Archivé",
 };
 
-
 const STATUT_BADGES = {
-    EN_COURS: "badge badge-warning",
-    CLOTURE: "badge badge-success",
-    ARCHIVE: "badge badge-secondary",
+    EN_COURS: "badge-info",
+    CLOTURE: "badge-success",
+    ARCHIVE: "badge-warning",
 };
-
 
 export default function DossierDetailPage() {
 
     const { id } = useParams();
     const navigate = useNavigate();
+
+    const { isAdmin, user } = useAuth();
     const notification = useNotification();
 
-    const { isAdmin } = useAuth();
-
     const [dossier, setDossier] = useState(null);
+    const [documents, setDocuments] = useState([]);
+
     const [loading, setLoading] = useState(true);
+    const [uploading, setUploading] = useState(false);
+    const [downloadingPdf, setDownloadingPdf] = useState(false);
 
-    const [confirmDelete, setConfirmDelete] = useState(false);
-    const [confirmArchive, setConfirmArchive] = useState(false);
+    const [error, setError] = useState("");
 
-    const [deleting, setDeleting] = useState(false);
-    const [archiving, setArchiving] = useState(false);
+    const [confirmAction, setConfirmAction] = useState(null);
 
 
     // ======================================================
     // CHARGER LE DOSSIER
     // ======================================================
 
+    async function loadDossier() {
+
+        try {
+
+            setLoading(true);
+            setError("");
+
+            const data = await getDossier(id);
+
+            setDossier(data);
+
+        } catch (err) {
+
+            setError(
+                extractErrorMessage(err)
+            );
+
+        } finally {
+
+            setLoading(false);
+        }
+    }
+
+
+    // ======================================================
+    // CHARGER LES DOCUMENTS
+    // ======================================================
+
+    async function loadDocuments() {
+
+        try {
+
+            const data =
+                await listDocumentsByDossier(id);
+
+            setDocuments(
+                Array.isArray(data)
+                    ? data
+                    : data?.content || []
+            );
+
+        } catch (err) {
+
+            notification.error(
+                extractErrorMessage(err)
+            );
+        }
+    }
+
+
+    // ======================================================
+    // INITIALISATION
+    // ======================================================
+
     useEffect(() => {
 
-        setLoading(true);
+        loadDossier();
+        loadDocuments();
 
-        getDossier(id)
-            .then((data) => {
-                setDossier(data);
-            })
-            .catch((err) => {
-                notification.error(
-                    extractErrorMessage(err)
-                );
-            })
-            .finally(() => {
-                setLoading(false);
-            });
-
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [id]);
+
+
+    // ======================================================
+    // TÉLÉCHARGER PDF
+    // ADMIN : tous les dossiers
+    // UTILISATEUR : uniquement ses propres dossiers
+    // ======================================================
+
+    async function handleDownloadPdf() {
+
+        if (!isAdmin) {
+
+            const isOwner =
+                Number(dossier?.utilisateurId) ===
+                Number(user?.id);
+
+            if (!isOwner) {
+
+                notification.error(
+                    "Vous ne pouvez télécharger que vos propres dossiers."
+                );
+
+                return;
+            }
+        }
+
+        try {
+
+            setDownloadingPdf(true);
+
+            await downloadDossierPdf(
+                dossier.id,
+                dossier.numeroDossier
+            );
+
+            notification.success(
+                "Le PDF a été téléchargé avec succès."
+            );
+
+        } catch (err) {
+
+            notification.error(
+                extractErrorMessage(err)
+            );
+
+        } finally {
+
+            setDownloadingPdf(false);
+        }
+    }
+
+
+    // ======================================================
+    // AJOUTER UNE PIÈCE JOINTE
+    // ======================================================
+
+    async function handleUpload(event) {
+
+        const file =
+            event.target.files?.[0];
+
+        if (!file) {
+            return;
+        }
+
+        if (file.size > 10 * 1024 * 1024) {
+
+            notification.error(
+                "Le fichier ne doit pas dépasser 10 Mo."
+            );
+
+            event.target.value = "";
+
+            return;
+        }
+
+        const allowedTypes = [
+            "application/pdf",
+            "image/jpeg",
+            "image/png",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ];
+
+        if (
+            file.type &&
+            !allowedTypes.includes(file.type)
+        ) {
+
+            notification.error(
+                "Format non autorisé. Formats acceptés : PDF, JPEG, PNG, Word."
+            );
+
+            event.target.value = "";
+
+            return;
+        }
+
+        try {
+
+            setUploading(true);
+
+            await uploadDocument(
+                id,
+                file
+            );
+
+            notification.success(
+                "Document ajouté avec succès."
+            );
+
+            await loadDocuments();
+
+        } catch (err) {
+
+            notification.error(
+                extractErrorMessage(err)
+            );
+
+        } finally {
+
+            setUploading(false);
+
+            event.target.value = "";
+        }
+    }
+
+
+    // ======================================================
+    // TÉLÉCHARGER UNE PIÈCE JOINTE
+    // ======================================================
+
+    async function handleDownloadDocument(document) {
+
+        try {
+
+            await downloadDocument(
+                document.id,
+                document.nomFichier
+            );
+
+        } catch (err) {
+
+            notification.error(
+                extractErrorMessage(err)
+            );
+        }
+    }
+
+
+    // ======================================================
+    // SUPPRIMER UNE PIÈCE JOINTE
+    // ======================================================
+
+    function askDeleteDocument(document) {
+
+        setConfirmAction({
+
+            title: "Supprimer le document",
+
+            message:
+                `Voulez-vous supprimer le document "${document.nomFichier}" ?`,
+
+            confirmLabel: "Supprimer",
+
+            danger: true,
+
+            onConfirm: async () => {
+
+                try {
+
+                    await deleteDocument(
+                        document.id
+                    );
+
+                    notification.success(
+                        "Document supprimé avec succès."
+                    );
+
+                    await loadDocuments();
+
+                } catch (err) {
+
+                    notification.error(
+                        extractErrorMessage(err)
+                    );
+
+                } finally {
+
+                    setConfirmAction(null);
+                }
+            },
+        });
+    }
 
 
     // ======================================================
     // SUPPRIMER LE DOSSIER
     // ======================================================
 
-    async function handleDelete() {
+    function askDeleteDossier() {
 
-        if (!dossier) {
-            return;
-        }
+        setConfirmAction({
 
-        setDeleting(true);
+            title: "Supprimer le dossier",
 
-        try {
+            message:
+                `Voulez-vous supprimer définitivement le dossier ${dossier.numeroDossier} ? Cette action est irréversible.`,
 
-            await deleteDossier(dossier.id);
+            confirmLabel: "Supprimer",
 
-            notification.success(
-                "Dossier supprimé avec succès"
-            );
+            danger: true,
 
-            navigate("/dossiers");
+            onConfirm: async () => {
 
-        } catch (err) {
+                try {
 
-            notification.error(
-                extractErrorMessage(err)
-            );
+                    const isOwner =
+                        Number(dossier.utilisateurId) ===
+                        Number(user?.id);
 
-        } finally {
+                    if (!isAdmin && !isOwner) {
 
-            setDeleting(false);
-            setConfirmDelete(false);
-        }
+                        notification.error(
+                            "Vous ne pouvez supprimer que vos propres dossiers."
+                        );
+
+                        setConfirmAction(null);
+
+                        return;
+                    }
+
+                    await deleteDossier(
+                        dossier.id
+                    );
+
+                    notification.success(
+                        "Dossier supprimé avec succès."
+                    );
+
+                    navigate("/dossiers");
+
+                } catch (err) {
+
+                    notification.error(
+                        extractErrorMessage(err)
+                    );
+
+                } finally {
+
+                    setConfirmAction(null);
+                }
+            },
+        });
     }
 
 
     // ======================================================
-    // ARCHIVER LE DOSSIER
+    // ARCHIVER
     // ======================================================
 
-    async function handleArchive() {
+    function askArchive() {
 
-        if (!dossier) {
-            return;
-        }
+        setConfirmAction({
 
-        setArchiving(true);
+            title: "Archiver le dossier",
 
-        try {
+            message:
+                `Voulez-vous archiver le dossier ${dossier.numeroDossier} ?`,
 
-            const updated =
-                await archiveDossier(dossier.id);
+            confirmLabel: "Archiver",
 
-            setDossier(updated);
+            danger: false,
 
-            notification.success(
-                "Dossier archivé avec succès"
-            );
+            onConfirm: async () => {
 
-        } catch (err) {
+                try {
 
-            notification.error(
-                extractErrorMessage(err)
-            );
+                    await archiveDossier(
+                        dossier.id
+                    );
 
-        } finally {
+                    notification.success(
+                        "Dossier archivé avec succès."
+                    );
 
-            setArchiving(false);
-            setConfirmArchive(false);
-        }
+                    await loadDossier();
+
+                } catch (err) {
+
+                    notification.error(
+                        extractErrorMessage(err)
+                    );
+
+                } finally {
+
+                    setConfirmAction(null);
+                }
+            },
+        });
     }
 
 
@@ -155,34 +427,52 @@ export default function DossierDetailPage() {
     // ======================================================
 
     if (loading) {
-        return (
-            <div className="page-container">
-                <LoadingSpinner />
-            </div>
-        );
+
+        return <LoadingSpinner />;
     }
 
 
     // ======================================================
-    // DOSSIER INTROUVABLE
+    // ERREUR
     // ======================================================
 
-    if (!dossier) {
+    if (error) {
+
         return (
-            <div className="page-container">
+
+            <div>
+
+                <div className="page-header">
+
+                    <h2>
+                        Dossier
+                    </h2>
+
+                </div>
 
                 <div className="card">
 
-                    <h2>
-                        Dossier introuvable
-                    </h2>
-
-                    <Link
-                        to="/dossiers"
-                        className="btn btn-secondary"
+                    <div
+                        className="form-error"
+                        role="alert"
                     >
-                        Retour aux dossiers
-                    </Link>
+                        {error}
+                    </div>
+
+                    <div
+                        style={{
+                            marginTop: 16,
+                        }}
+                    >
+
+                        <Link
+                            to="/dossiers"
+                            className="btn btn-secondary"
+                        >
+                            ← Retour aux dossiers
+                        </Link>
+
+                    </div>
 
                 </div>
 
@@ -191,36 +481,60 @@ export default function DossierDetailPage() {
     }
 
 
-    const statut =
-        dossier.statut || "EN_COURS";
+    if (!dossier) {
+        return null;
+    }
+
+
+    // ======================================================
+    // PROPRIÉTAIRE DU DOSSIER
+    // ======================================================
+
+    const isOwner =
+        Number(dossier.utilisateurId) ===
+        Number(user?.id);
+
+
+    // ======================================================
+    // AUTORISATION TÉLÉCHARGEMENT PDF
+    // ======================================================
+
+    const canDownloadPdf =
+        isAdmin || isOwner;
+
+
+    // ======================================================
+    // STATUT
+    // ======================================================
 
     const statutLabel =
-        STATUT_LABELS[statut] || statut;
+        STATUT_LABELS[dossier.statut]
+        || dossier.statut;
 
     const statutBadge =
-        STATUT_BADGES[statut] ||
-        "badge badge-secondary";
+        STATUT_BADGES[dossier.statut]
+        || "badge-info";
 
+
+    // ======================================================
+    // AFFICHAGE
+    // ======================================================
 
     return (
-        <div className="page-container">
+
+        <div>
 
             {/* ==================================================
                 EN-TÊTE
             ================================================== */}
 
-            <div
-                className="page-header"
-                style={{
-                    marginBottom: 24,
-                }}
-            >
+            <div className="page-header">
 
                 <div>
 
                     <Link
                         to="/dossiers"
-                        className="btn btn-secondary btn-sm"
+                        className="btn btn-secondary"
                         style={{
                             marginBottom: 12,
                         }}
@@ -228,69 +542,96 @@ export default function DossierDetailPage() {
                         ← Retour aux dossiers
                     </Link>
 
-                    <h1>
+                    <h2>
                         Dossier {dossier.numeroDossier}
-                    </h1>
+                    </h2>
 
                 </div>
 
 
-                {/* ACTIONS */}
+                {/* ==================================================
+                    ACTIONS
+                ================================================== */}
 
                 <div
                     style={{
                         display: "flex",
                         gap: 8,
+                        flexWrap: "wrap",
                     }}
                 >
 
-                    {/* Modifier uniquement ADMIN */}
+                    {/* ==================================================
+                        TÉLÉCHARGER PDF
+                        ADMIN = TOUS
+                        USER = SES PROPRES DOSSIERS
+                    ================================================== */}
+
+                    {canDownloadPdf && (
+
+                        <button
+                            type="button"
+                            className="btn btn-primary"
+                            onClick={handleDownloadPdf}
+                            disabled={downloadingPdf}
+                        >
+
+                            {downloadingPdf
+                                ? "Téléchargement..."
+                                : "Télécharger PDF"}
+
+                        </button>
+                    )}
+
+
+                    {/* ==================================================
+                        MODIFIER
+                        ADMIN UNIQUEMENT
+                    ================================================== */}
 
                     {isAdmin &&
-                        statut !== "ARCHIVE" && (
+                        dossier.statut !== "ARCHIVE" && (
+
                             <Link
-                                to={`/dossiers/${dossier.id}/edit`}
-                                className="btn btn-primary"
+                                to={`/dossiers/${dossier.id}/modifier`}
+                                className="btn btn-secondary"
                             >
                                 Modifier
                             </Link>
                         )}
 
 
-                    {/* Archiver uniquement ADMIN
-                        et uniquement si CLOTURE */}
+                    {/* ==================================================
+                        ARCHIVER
+                    ================================================== */}
 
                     {isAdmin &&
-                        statut === "CLOTURE" && (
+                        dossier.statut === "CLOTURE" && (
+
                             <button
                                 type="button"
                                 className="btn btn-secondary"
-                                disabled={archiving}
-                                onClick={() =>
-                                    setConfirmArchive(true)
-                                }
+                                onClick={askArchive}
                             >
-                                {archiving
-                                    ? "Archivage..."
-                                    : "Archiver"}
+                                Archiver
                             </button>
                         )}
 
 
-                    {/* Supprimer */}
+                    {/* ==================================================
+                        SUPPRIMER
+                    ================================================== */}
 
-                    <button
-                        type="button"
-                        className="btn btn-danger"
-                        disabled={deleting}
-                        onClick={() =>
-                            setConfirmDelete(true)
-                        }
-                    >
-                        {deleting
-                            ? "Suppression..."
-                            : "Supprimer"}
-                    </button>
+                    {(isAdmin || isOwner) && (
+
+                        <button
+                            type="button"
+                            className="btn btn-danger"
+                            onClick={askDeleteDossier}
+                        >
+                            Supprimer
+                        </button>
+                    )}
 
                 </div>
 
@@ -304,25 +645,20 @@ export default function DossierDetailPage() {
             <div className="card">
 
                 <div
-                    className="page-header"
                     style={{
-                        marginBottom: 20,
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 24,
                     }}
                 >
 
-                    <h2
-                        style={{
-                            margin: 0,
-                        }}
-                    >
+                    <h3>
                         Informations du dossier
-                    </h2>
-
-
-                    {/* STATUT EN LECTURE */}
+                    </h3>
 
                     <span
-                        className={statutBadge}
+                        className={`badge ${statutBadge}`}
                     >
                         {statutLabel}
                     </span>
@@ -330,150 +666,128 @@ export default function DossierDetailPage() {
                 </div>
 
 
-                <div
-                    className="details-grid"
-                    style={{
-                        display: "grid",
-                        gridTemplateColumns:
-                            "repeat(2, minmax(0, 1fr))",
-                        gap: 20,
-                    }}
-                >
+                <div className="form-row">
 
-                    {/* Numéro */}
+                    <div className="form-group">
 
-                    <div>
-
-                        <strong>
+                        <label className="form-label">
                             Numéro de dossier
-                        </strong>
+                        </label>
 
-                        <p>
+                        <div>
                             {dossier.numeroDossier || "-"}
-                        </p>
+                        </div>
 
                     </div>
 
 
-                    {/* Objet */}
+                    <div className="form-group">
 
-                    <div>
-
-                        <strong>
+                        <label className="form-label">
                             Objet
-                        </strong>
+                        </label>
 
-                        <p>
+                        <div>
                             {dossier.objet || "-"}
-                        </p>
-
-                    </div>
-
-
-                    {/* Tribunal */}
-
-                    <div>
-
-                        <strong>
-                            Tribunal
-                        </strong>
-
-                        <p>
-                            {dossier.tribunal || "-"}
-                        </p>
-
-                    </div>
-
-
-                    {/* Juge */}
-
-                    <div>
-
-                        <strong>
-                            Juge
-                        </strong>
-
-                        <p>
-                            {dossier.juge || "-"}
-                        </p>
-
-                    </div>
-
-
-                    {/* Procureur */}
-
-                    <div>
-
-                        <strong>
-                            Procureur
-                        </strong>
-
-                        <p>
-                            {dossier.procureur || "-"}
-                        </p>
-
-                    </div>
-
-
-                    {/* Date création */}
-
-                    <div>
-
-                        <strong>
-                            Date de création
-                        </strong>
-
-                        <p>
-                            {dossier.dateCreation
-                                ? new Date(
-                                    dossier.dateCreation
-                                ).toLocaleString()
-                                : "-"}
-                        </p>
-
-                    </div>
-
-
-                    {/* Date modification */}
-
-                    <div>
-
-                        <strong>
-                            Dernière modification
-                        </strong>
-
-                        <p>
-                            {dossier.dateMaj
-                                ? new Date(
-                                    dossier.dateMaj
-                                ).toLocaleString()
-                                : "-"}
-                        </p>
+                        </div>
 
                     </div>
 
                 </div>
 
 
-                {/* DESCRIPTION */}
+                <div className="form-row">
 
-                <div
-                    style={{
-                        marginTop: 24,
-                    }}
-                >
+                    <div className="form-group">
 
-                    <strong>
+                        <label className="form-label">
+                            Tribunal
+                        </label>
+
+                        <div>
+                            {dossier.tribunal || "-"}
+                        </div>
+
+                    </div>
+
+
+                    <div className="form-group">
+
+                        <label className="form-label">
+                            Juge
+                        </label>
+
+                        <div>
+                            {dossier.juge || "-"}
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div className="form-row">
+
+                    <div className="form-group">
+
+                        <label className="form-label">
+                            Procureur
+                        </label>
+
+                        <div>
+                            {dossier.procureur || "-"}
+                        </div>
+
+                    </div>
+
+
+                    <div className="form-group">
+
+                        <label className="form-label">
+                            Date de création
+                        </label>
+
+                        <div>
+                            {dossier.dateCreation
+                                ? new Date(
+                                    dossier.dateCreation
+                                ).toLocaleString()
+                                : "-"
+                            }
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+                <div className="form-group">
+
+                    <label className="form-label">
+                        Dernière modification
+                    </label>
+
+                    <div>
+                        {dossier.dateMaj
+                            ? new Date(
+                                dossier.dateMaj
+                            ).toLocaleString()
+                            : "-"
+                        }
+                    </div>
+
+                </div>
+
+
+                <div className="form-group">
+
+                    <label className="form-label">
                         Description
-                    </strong>
+                    </label>
 
-                    <p
-                        style={{
-                            whiteSpace: "pre-wrap",
-                        }}
-                    >
+                    <div>
                         {dossier.description || "-"}
-                    </p>
+                    </div>
 
                 </div>
 
@@ -481,78 +795,207 @@ export default function DossierDetailPage() {
 
 
             {/* ==================================================
-                DOCUMENTS
+                PIÈCES JOINTES
             ================================================== */}
 
-            <DocumentsPanel
-                dossierId={dossier.id}
-            />
+            <div className="card">
+
+                <div
+                    style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBottom: 16,
+                    }}
+                >
+
+                    <div>
+
+                        <h3>
+                            Pièces jointes
+                        </h3>
+
+                        <p
+                            style={{
+                                marginTop: 6,
+                            }}
+                        >
+                            Formats acceptés : PDF, JPEG,
+                            PNG, Word (.doc/.docx) — 10 Mo maximum.
+                        </p>
+
+                    </div>
+
+
+                    {/* AJOUT DOCUMENT */}
+
+                    <label
+                        className="btn btn-primary"
+                        style={{
+                            cursor: uploading
+                                ? "not-allowed"
+                                : "pointer",
+                        }}
+                    >
+
+                        {uploading
+                            ? "Ajout..."
+                            : "+ Ajouter un document"}
+
+                        <input
+                            type="file"
+                            hidden
+                            disabled={uploading}
+                            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                            onChange={handleUpload}
+                        />
+
+                    </label>
+
+                </div>
+
+
+                {/* LISTE DOCUMENTS */}
+
+                {documents.length === 0 ? (
+
+                    <div className="empty-state">
+                        Aucun document rattaché à ce dossier.
+                    </div>
+
+                ) : (
+
+                    <div className="table-wrapper">
+
+                        <table className="data-table">
+
+                            <thead>
+
+                            <tr>
+
+                                <th>
+                                    Nom du fichier
+                                </th>
+
+                                <th>
+                                    Taille
+                                </th>
+
+                                <th>
+                                    Actions
+                                </th>
+
+                            </tr>
+
+                            </thead>
+
+
+                            <tbody>
+
+                            {documents.map(
+                                (document) => (
+
+                                    <tr
+                                        key={document.id}
+                                    >
+
+                                        <td>
+                                            {document.nomFichier
+                                                || document.filename
+                                                || "Document"
+                                            }
+                                        </td>
+
+
+                                        <td>
+
+                                            {document.taille
+                                                ? `${(
+                                                    document.taille /
+                                                    1024
+                                                ).toFixed(1)} Ko`
+                                                : "-"
+                                            }
+
+                                        </td>
+
+
+                                        <td>
+
+                                            <div
+                                                style={{
+                                                    display: "flex",
+                                                    gap: 8,
+                                                }}
+                                            >
+
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary btn-sm"
+                                                    onClick={() =>
+                                                        handleDownloadDocument(
+                                                            document
+                                                        )
+                                                    }
+                                                >
+                                                    Télécharger
+                                                </button>
+
+
+                                                {(isAdmin || isOwner) && (
+
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-danger btn-sm"
+                                                        onClick={() =>
+                                                            askDeleteDocument(
+                                                                document
+                                                            )
+                                                        }
+                                                    >
+                                                        Supprimer
+                                                    </button>
+
+                                                )}
+
+                                            </div>
+
+                                        </td>
+
+                                    </tr>
+                                )
+                            )}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+                )}
+
+            </div>
 
 
             {/* ==================================================
-                CONFIRMATION SUPPRESSION
+                CONFIRMATION
             ================================================== */}
 
             <ConfirmDialog
-
-                open={confirmDelete}
-
-                title="Supprimer le dossier"
-
-                message={
-                    `Voulez-vous vraiment supprimer le dossier ` +
-                    `"${dossier.numeroDossier}" ? ` +
-                    `Cette action est irréversible.`
-                }
-
+                open={!!confirmAction}
+                title={confirmAction?.title}
+                message={confirmAction?.message}
                 confirmLabel={
-                    deleting
-                        ? "Suppression..."
-                        : "Supprimer"
+                    confirmAction?.confirmLabel
                 }
-
-                danger
-
-                onConfirm={handleDelete}
-
-                onCancel={() => {
-                    if (!deleting) {
-                        setConfirmDelete(false);
-                    }
-                }}
-
-            />
-
-
-            {/* ==================================================
-                CONFIRMATION ARCHIVAGE
-            ================================================== */}
-
-            <ConfirmDialog
-
-                open={confirmArchive}
-
-                title="Archiver le dossier"
-
-                message={
-                    `Voulez-vous archiver le dossier ` +
-                    `"${dossier.numeroDossier}" ?`
+                danger={
+                    confirmAction?.danger
                 }
-
-                confirmLabel={
-                    archiving
-                        ? "Archivage..."
-                        : "Archiver"
+                onConfirm={
+                    confirmAction?.onConfirm
                 }
-
-                onConfirm={handleArchive}
-
-                onCancel={() => {
-                    if (!archiving) {
-                        setConfirmArchive(false);
-                    }
-                }}
-
+                onCancel={() =>
+                    setConfirmAction(null)
+                }
             />
 
         </div>

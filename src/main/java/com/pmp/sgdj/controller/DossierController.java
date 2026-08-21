@@ -4,6 +4,7 @@ import com.pmp.sgdj.dto.DossierCreateDTO;
 import com.pmp.sgdj.dto.DossierResponseDTO;
 import com.pmp.sgdj.dto.DossierUpdateDTO;
 import com.pmp.sgdj.enums.StatutDossier;
+import com.pmp.sgdj.service.DossierPdfService;
 import com.pmp.sgdj.service.DossierService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +13,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -24,12 +26,19 @@ public class DossierController {
 
     private final DossierService dossierService;
 
+    private final DossierPdfService dossierPdfService;
+
+
+    // ======================================================
+    // CREER UN DOSSIER
+    // ======================================================
+
     /**
      * Créer un dossier.
      *
      * ADMIN et UTILISATEUR peuvent créer.
      *
-     * Le dossier sera toujours EN_COURS.
+     * Le dossier commence toujours en EN_COURS.
      */
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'UTILISATEUR')")
@@ -49,8 +58,15 @@ public class DossierController {
                 .body(dossier);
     }
 
+
+    // ======================================================
+    // CONSULTER UN DOSSIER
+    // ======================================================
+
     /**
      * Consulter un dossier.
+     *
+     * ADMIN et UTILISATEUR peuvent consulter.
      */
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN', 'UTILISATEUR')")
@@ -63,8 +79,63 @@ public class DossierController {
         );
     }
 
+
+    // ======================================================
+    // TELECHARGER LE PDF
+    // ======================================================
+
+    /**
+     * Télécharger le PDF d'un dossier.
+     *
+     * ADMIN :
+     * peut télécharger n'importe quel dossier.
+     *
+     * UTILISATEUR :
+     * peut télécharger uniquement ses propres dossiers.
+     */
+    @GetMapping("/{id}/pdf")
+    @PreAuthorize("hasAnyRole('ADMIN', 'UTILISATEUR')")
+    public ResponseEntity<byte[]> downloadPdf(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+
+        byte[] pdf =
+                dossierPdfService.generatePdf(
+                        id,
+                        authentication
+                );
+
+
+        String filename =
+                "dossier-" + id + ".pdf";
+
+
+        return ResponseEntity.ok()
+
+                .contentType(
+                        MediaType.APPLICATION_PDF
+                )
+
+                .header(
+                        "Content-Disposition",
+                        "attachment; filename=\"" +
+                                filename +
+                                "\""
+                )
+
+                .body(pdf);
+    }
+
+
+    // ======================================================
+    // CONSULTER TOUS LES DOSSIERS
+    // ======================================================
+
     /**
      * Consulter tous les dossiers.
+     *
+     * ADMIN et UTILISATEUR peuvent consulter.
      */
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN', 'UTILISATEUR')")
@@ -73,34 +144,50 @@ public class DossierController {
             @RequestParam(defaultValue = "10") int size
     ) {
 
-        Pageable pageable = PageRequest.of(
-                page,
-                size,
-                Sort.by("dateCreation").descending()
-        );
+        Pageable pageable =
+                PageRequest.of(
+                        page,
+                        size,
+                        Sort.by("dateCreation")
+                                .descending()
+                );
 
         return ResponseEntity.ok(
                 dossierService.getAll(pageable)
         );
     }
 
+
+    // ======================================================
+    // RECHERCHER UN DOSSIER
+    // ======================================================
+
     /**
-     * Rechercher un dossier.
+     * Rechercher par numéro ou objet.
      */
     @GetMapping("/search")
     @PreAuthorize("hasAnyRole('ADMIN', 'UTILISATEUR')")
     public ResponseEntity<Page<DossierResponseDTO>> search(
-            @RequestParam(required = false) String numeroDossier,
-            @RequestParam(required = false) String objet,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
+            @RequestParam(required = false)
+            String numeroDossier,
+
+            @RequestParam(required = false)
+            String objet,
+
+            @RequestParam(defaultValue = "0")
+            int page,
+
+            @RequestParam(defaultValue = "10")
+            int size
     ) {
 
-        Pageable pageable = PageRequest.of(
-                page,
-                size,
-                Sort.by("dateCreation").descending()
-        );
+        Pageable pageable =
+                PageRequest.of(
+                        page,
+                        size,
+                        Sort.by("dateCreation")
+                                .descending()
+                );
 
         return ResponseEntity.ok(
                 dossierService.search(
@@ -111,22 +198,33 @@ public class DossierController {
         );
     }
 
+
+    // ======================================================
+    // FILTRER PAR STATUT
+    // ======================================================
+
     /**
-     * Filtrer par statut.
+     * Filtrer les dossiers par statut.
      */
     @GetMapping("/statut/{statut}")
     @PreAuthorize("hasAnyRole('ADMIN', 'UTILISATEUR')")
     public ResponseEntity<Page<DossierResponseDTO>> findByStatut(
             @PathVariable StatutDossier statut,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
+
+            @RequestParam(defaultValue = "0")
+            int page,
+
+            @RequestParam(defaultValue = "10")
+            int size
     ) {
 
-        Pageable pageable = PageRequest.of(
-                page,
-                size,
-                Sort.by("dateCreation").descending()
-        );
+        Pageable pageable =
+                PageRequest.of(
+                        page,
+                        size,
+                        Sort.by("dateCreation")
+                                .descending()
+                );
 
         return ResponseEntity.ok(
                 dossierService.findByStatut(
@@ -136,31 +234,51 @@ public class DossierController {
         );
     }
 
+
+    // ======================================================
+    // MODIFIER UN DOSSIER
+    // ======================================================
+
     /**
      * Modifier un dossier.
      *
      * ADMIN uniquement.
      *
-     * Permet EN_COURS -> CLOTURE.
+     * Permet notamment :
+     *
+     * EN_COURS -> CLOTURE
      */
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<DossierResponseDTO> update(
             @PathVariable Long id,
-            @Valid @RequestBody DossierUpdateDTO dto
+
+            @Valid
+            @RequestBody
+            DossierUpdateDTO dto
     ) {
 
         return ResponseEntity.ok(
-                dossierService.update(id, dto)
+                dossierService.update(
+                        id,
+                        dto
+                )
         );
     }
+
+
+    // ======================================================
+    // ARCHIVER UN DOSSIER
+    // ======================================================
 
     /**
      * Archiver un dossier.
      *
      * ADMIN uniquement.
      *
-     * CLOTURE -> ARCHIVE.
+     * Transition :
+     *
+     * CLOTURE -> ARCHIVE
      */
     @PostMapping("/{id}/archive")
     @PreAuthorize("hasRole('ADMIN')")
@@ -172,6 +290,11 @@ public class DossierController {
                 dossierService.archive(id)
         );
     }
+
+
+    // ======================================================
+    // SUPPRIMER UN DOSSIER
+    // ======================================================
 
     /**
      * Supprimer un dossier.
@@ -190,12 +313,15 @@ public class DossierController {
     ) {
 
         boolean isAdmin =
-                authentication.getAuthorities()
+                authentication
+                        .getAuthorities()
                         .stream()
                         .anyMatch(authority ->
-                                authority.getAuthority()
+                                authority
+                                        .getAuthority()
                                         .equals("ROLE_ADMIN")
                         );
+
 
         dossierService.delete(
                 id,
@@ -203,6 +329,9 @@ public class DossierController {
                 isAdmin
         );
 
-        return ResponseEntity.noContent().build();
+
+        return ResponseEntity
+                .noContent()
+                .build();
     }
 }
