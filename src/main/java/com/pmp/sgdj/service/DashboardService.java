@@ -27,54 +27,109 @@ public class DashboardService {
 
     @Transactional(readOnly = true)
     public DashboardStatsDTO getStats(Authentication authentication) {
+
         boolean isAdmin = authentication.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .anyMatch("ROLE_ADMIN"::equals);
 
-        Utilisateur utilisateur = utilisateurRepository.findByEmail(authentication.getName()).orElseThrow();
+        Utilisateur utilisateur = utilisateurRepository
+                .findByEmail(authentication.getName())
+                .orElseThrow();
+
         Long userId = utilisateur.getId();
 
-        // Un ADMIN voit les statistiques globales du systeme ; un UTILISATEUR ne voit que
-        // les dossiers qu'il a lui-meme crees ("tableau de bord personnalise... statistiques
-        // correspondant a son role").
+        /*
+         * Un ADMIN voit les statistiques globales.
+         * Un UTILISATEUR ne voit que les dossiers qu'il a créés.
+         */
+
         long totalDossiers = isAdmin
                 ? dossierJudiciaireRepository.count()
                 : dossierJudiciaireRepository.countByUtilisateurId(userId);
 
         long totalDossiersArchives = isAdmin
                 ? dossierJudiciaireRepository.countByStatut(StatutDossier.ARCHIVE)
-                : dossierJudiciaireRepository.countByUtilisateurIdAndStatut(userId, StatutDossier.ARCHIVE);
+                : dossierJudiciaireRepository.countByUtilisateurIdAndStatut(
+                userId,
+                StatutDossier.ARCHIVE
+        );
 
+        /*
+         * Les 5 dossiers les plus récents.
+         */
         List<DossierJudiciaire> dossiersRecents = isAdmin
-                ? dossierJudiciaireRepository.findTop5ByOrderByDateCreationDesc()
-                : dossierJudiciaireRepository.findTop5ByUtilisateurIdOrderByDateCreationDesc(userId);
+                ? dossierJudiciaireRepository
+                .findTop5ByOrderByDateCreationDesc()
+                : dossierJudiciaireRepository
+                .findTop5ByUtilisateurIdOrderByDateCreationDesc(userId);
 
+        /*
+         * Les 5 dernières modifications.
+         */
         List<DossierJudiciaire> dernieresModifications = isAdmin
-                ? dossierJudiciaireRepository.findTop5ByDateMajIsNotNullOrderByDateMajDesc()
-                : dossierJudiciaireRepository.findTop5ByUtilisateurIdAndDateMajIsNotNullOrderByDateMajDesc(userId);
+                ? dossierJudiciaireRepository
+                .findTop5ByDateMajIsNotNullOrderByDateMajDesc()
+                : dossierJudiciaireRepository
+                .findTop5ByUtilisateurIdAndDateMajIsNotNullOrderByDateMajDesc(userId);
 
-        // La liste des derniers utilisateurs crees ne concerne que l'administrateur (gestion des comptes).
+        /*
+         * Les 5 derniers utilisateurs créés.
+         * Cette information est uniquement visible par l'administrateur.
+         */
         List<UtilisateurResponseDTO> derniersUtilisateurs = isAdmin
-                ? utilisateurRepository.findTop5ByOrderByDateCreationDesc().stream()
-                        .map(utilisateurMapper::toResponseDTO)
-                        .toList()
+                ? utilisateurRepository
+                .findTop5ByOrderByDateCreationDesc()
+                .stream()
+                .map(utilisateurMapper::toResponseDTO)
+                .toList()
                 : List.of();
 
+        /*
+         * Construction du DashboardStatsDTO.
+         *
+         * Le record DashboardStatsDTO attend exactement 7 paramètres :
+         *
+         * 1. totalUtilisateurs
+         * 2. totalDossiers
+         * 3. totalDossiersArchives
+         * 4. dossiersRecents
+         * 5. dernieresModifications
+         * 6. derniersUtilisateurs
+         * 7. profilConnecte
+         */
         return new DashboardStatsDTO(
                 utilisateurRepository.count(),
                 totalDossiers,
                 totalDossiersArchives,
-                dossiersRecents.stream().map(this::toSummary).toList(),
-                dernieresModifications.stream().map(this::toSummary).toList(),
+
+                dossiersRecents
+                        .stream()
+                        .map(this::toSummary)
+                        .toList(),
+
+                dernieresModifications
+                        .stream()
+                        .map(this::toSummary)
+                        .toList(),
+
                 derniersUtilisateurs,
+
                 utilisateurMapper.toResponseDTO(utilisateur)
         );
     }
 
+    /**
+     * Transforme un dossier judiciaire en DossierSummaryDTO
+     * pour l'affichage dans le dashboard.
+     */
     private DossierSummaryDTO toSummary(DossierJudiciaire dossier) {
+
         String creePar = dossier.getUtilisateur() != null
-                ? dossier.getUtilisateur().getPrenom() + " " + dossier.getUtilisateur().getNom()
+                ? dossier.getUtilisateur().getPrenom()
+                + " "
+                + dossier.getUtilisateur().getNom()
                 : null;
+
         return new DossierSummaryDTO(
                 dossier.getId(),
                 dossier.getNumeroDossier(),
